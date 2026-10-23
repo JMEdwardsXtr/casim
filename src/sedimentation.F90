@@ -1,5 +1,5 @@
 module sedimentation
-  use mphys_die, only: throw_mphys_error, incorrect_opt, std_msg
+  use mphys_die, only: throw_mphys_error, incorrect_opt, std_msg, mphys_message
   use variable_precision, only: wp, iwp
   use mphys_parameters, only: nz, hydro_params, cloud_params, rain_params   &
        , ice_params, snow_params, graupel_params, a_s, b_s
@@ -11,7 +11,7 @@ module sedimentation
        l_separate_rain, l_warm, i_aerosed_method, l_sed_icecloud_as_1m, l_sed_rain_1m, l_sed_snow_1m, &
        l_sed_graupel_1m, l_kfsm, & 
        cfl_vt_max, l_sed_eulexp
-  use mphys_constants, only: rho0
+  use mphys_constants, only: rho0, pi
   use process_routines, only: process_rate, i_psedr, i_asedr, i_asedl, i_psedl, &
        i_pseds, i_psedi, i_psedg, i_dsedi, i_dseds, i_dsedg
   use thresholds, only: thresh_small
@@ -35,6 +35,31 @@ module sedimentation
   real(wp), allocatable :: flux_n2(:)
   real(wp), allocatable :: flux_n3(:)
   real(wp), allocatable :: Grho(:)
+
+! Volume power law for a sphere
+  real(wp), parameter :: av_sph = 0.523598775598
+  real(wp), parameter :: bv_sph = 3.0
+
+! Projected area power from VM21
+  real(wp), parameter :: aa_vm21 = 0.0151145
+  real(wp), parameter :: ba_vm21 = 1.56
+
+! Flat projected area of a plate
+  real(wp), parameter :: aa_plt = 0.64952
+  real(wp), parameter :: ba_plt = 2.0
+
+! Side area of a plate (From Auer & Veal 1970 via Mitchell & Arnott 94)
+  real(wp), parameter :: as_plt = 0.0005
+  real(wp), parameter :: bs_plt = 1.449
+
+! Volume of a plate (From Auer & Veal 1970 via Mitchell & Arnott 94)
+  real(wp), parameter :: av_plt = 0.00064952
+  real(wp), parameter :: bv_plt = 2.449
+
+! Packing factor for plates: probably rather lower than it 
+! should be, but a tuning
+  real(wp), parameter :: packing_factor_plt = 0.2
+  real(wp), parameter :: ssa_tuning_plt = 1.216
 
 !$OMP THREADPRIVATE(flux_n1, flux_n2, flux_n3, Grho)
 
@@ -91,7 +116,9 @@ contains
   end subroutine finalise_sedr
 
   subroutine sedr(ixy_inner, qfields, aeroact, dustact,   &
-       params, procs, aerosol_procs, precip1d, l_doaerosol)
+       params, procs, aerosol_procs, precip1d, &
+       l_surface_props, surface_vflx, surface_ssa, &
+       l_doaerosol)
 
     USE yomhook, ONLY: lhook, dr_hook
     USE parkind1, ONLY: jprb, jpim
@@ -108,6 +135,9 @@ contains
     type(process_rate), intent(inout), target :: procs(:,:)
     type(process_rate), intent(inout), target :: aerosol_procs(:,:)
     real(wp), intent(out) :: precip1d(nz)
+    logical, intent(in) :: l_surface_props
+    real(wp), intent(out) :: surface_vflx
+    real(wp), intent(out) :: surface_ssa
     logical, optional, intent(in) :: l_doaerosol
 
     real(wp) :: dm1, dm2, dm3
@@ -521,6 +551,35 @@ contains
       if (params%l_2m) procs(params%i_2m, iproc%id)%column_data(k)=dm2
 
       !if (params%l_3m) procs(params%i_3m, iproc%id)%column_data(k)=dm3
+
+      ! Calculate properties of snow leaving the atmospheric column.
+      if ( (l_surface_props) .and. (k==1) ) then
+        surface_vflx = (av_plt / c_x) * (lam+f_x)**(sp1 - bv_plt) * &
+               (Gammafunc(bv_plt + 1.0+mu+b_x)/Gammafunc(1.0+mu+sp1+b_x)) * &
+               precip1d(k)
+        ! Convert from the bounding volume of the crystal to the fresh
+        ! packed density
+        surface_vflx = surface_vflx / packing_factor_plt
+
+        ! Based on plates: 2 flat faces
+        surface_ssa = (2.0 * aa_plt / c_x) * (lam+f_x)**(sp1 - ba_plt) *     &
+               (Gammafunc(1.0+b_x+mu+ba_plt)/Gammafunc(1.0+b_x+mu+sp1))
+        ! Add on 6 side faces
+        surface_ssa = surface_ssa + &
+               (6.0 * as_plt / c_x) * (lam+f_x)**(sp1 - bs_plt) *     &
+               (Gammafunc(1.0+b_x+mu+bs_plt)/Gammafunc(1.0+b_x+mu+sp1))
+        ! Apply the tuning factor
+        surface_ssa = surface_ssa * ssa_tuning_plt
+      end if
+      if ( k==1 ) then
+        if ( MOD(INT(1.0e4*lam),10000) == 3 ) then
+        write(std_msg, *) '@@LMB00', l_surface_props, b_x, c_x, sp1, lam, mu, &
+             surface_vflx, surface_ssa
+        call mphys_message(ModuleName//':'//RoutineName, &
+                                     std_msg )
+        end if
+      end if
+
     end do
 
     IF (lhook) CALL dr_hook(ModuleName//':'//RoutineName,zhook_out,zhook_handle)
@@ -528,7 +587,9 @@ contains
   end subroutine sedr
 
 subroutine sedr_1M_2M(ixy_inner, step_length, qfields, aeroact, dustact,   &
-       params, procs, aerosol_procs, precip1d, l_doaerosol)
+       params, procs, aerosol_procs, precip1d, &
+       l_surface_props, surface_vflx, surface_ssa, &
+       l_doaerosol)
 
 !!! This routine has the same functionality as sedr, except it will only work with 
 !!! single moment or double moment settings, since the fallspeeds are calced using 
@@ -555,6 +616,9 @@ type(aerosol_active), intent(in) :: aeroact(:), dustact(:)
 type(process_rate), intent(inout), target :: procs(:,:)
 type(process_rate), intent(inout), target :: aerosol_procs(:,:)
 real(wp), intent(out) :: precip1d(nz)
+logical, intent(in) :: l_surface_props
+real(wp), intent(out) :: surface_vflx
+real(wp), intent(out) :: surface_ssa
 logical, optional, intent(in) :: l_doaerosol
 
 real(wp) :: dn1, dn2
@@ -1119,6 +1183,34 @@ do k=nz-1, 1, -1
   procs(params%i_1m, iproc%id)%column_data(k)=c_x*dn1
 
   if (params%l_2m) procs(params%i_2m, iproc%id)%column_data(k)=dn2
+
+  ! Calculate properties of snow leaving the atmospheric column.
+  if ( (l_surface_props) .and. (k==1) ) then
+    surface_vflx = (av_plt / c_x) * (lam+f_x)**(sp1 - bv_plt) * &
+           (Gammafunc(bv_plt + 1.0+mu+b_x)/Gammafunc(1.0+mu+sp1+b_x)) * &
+           precip1d(k)
+    ! Convert from the bounding volume of the crystal to the fresh
+    ! packed density
+    surface_vflx = surface_vflx / packing_factor_plt
+
+    ! Based on plates: 2 flat faces
+    surface_ssa = (2.0 * aa_plt / c_x) * (lam+f_x)**(sp1 - ba_plt) *     &
+           (Gammafunc(1.0+b_x+mu+ba_plt)/Gammafunc(1.0+b_x+mu+sp1))
+    ! Add on 6 side faces
+    surface_ssa = surface_ssa + &
+           (6.0 * as_plt / c_x) * (lam+f_x)**(sp1 - bs_plt) *     &
+           (Gammafunc(1.0+b_x+mu+bs_plt)/Gammafunc(1.0+b_x+mu+sp1))
+    ! Apply the tuning factor
+    surface_ssa = surface_ssa * ssa_tuning_plt
+  end if
+  if ( k==1 ) then
+    if ( MOD(INT(1.0e4*lam),10000) == 3 ) then
+    write(std_msg, *) '@@LMB02', l_surface_props, b_x, c_x, sp1, lam, mu, &
+         surface_vflx, surface_ssa
+    call mphys_message(ModuleName//':'//RoutineName, &
+                                 std_msg )
+    end if
+  end if
 
 end do
 

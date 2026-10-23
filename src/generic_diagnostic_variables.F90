@@ -113,6 +113,12 @@ TYPE diaglist
   LOGICAl :: l_surface_graup  = .FALSE.
 
   !---------------------------------
+  ! 2D variable logical flags for surface snow
+  !---------------------------------
+  LOGICAL :: l_surface_snowrho = .FALSE.
+  LOGICAL :: l_surface_snowssa = .FALSE.
+
+  !---------------------------------
   ! 3D variable logical flags
   !---------------------------------
   LOGICAL :: l_radar          = .FALSE.
@@ -333,6 +339,10 @@ TYPE diaglist
   REAL, ALLOCATABLE :: SurfaceCloudR(:,:)
   REAL, ALLOCATABLE :: SurfaceSnowR(:,:)
   REAL, ALLOCATABLE :: SurfaceGraupR(:,:)
+
+  ! Surface Snow Properties
+  REAL, ALLOCATABLE :: SurfaceSnowRho(:,:)
+  REAL, ALLOCATABLE :: SurfaceSnowSSA(:,:)
 
 !PRF
   REAL, ALLOCATABLE :: lwp(:,:)
@@ -604,6 +614,20 @@ IF ( casdiags % l_surface_graup ) THEN
 
   ALLOCATE ( casdiags % SurfaceGraupR(i_start:i_end, j_start:j_end) )
   casdiags % SurfaceGraupR(:,:) = zero_real_wp
+
+END IF
+
+IF ( casdiags % l_surface_snowrho ) THEN
+
+  ALLOCATE ( casdiags % SurfaceSnowRho(i_start:i_end, j_start:j_end) )
+  casdiags % SurfaceSnowRho(:,:) = zero_real_wp
+
+END IF
+
+IF ( casdiags % l_surface_snowssa ) THEN
+
+  ALLOCATE ( casdiags % SurfaceSnowSSA(i_start:i_end, j_start:j_end) )
+  casdiags % SurfaceSnowSSA(:,:) = zero_real_wp
 
 END IF
 
@@ -2614,6 +2638,14 @@ IF (casdiags % l_radar) THEN
       DEALLOCATE ( casdiags % dbz_tot )
    END IF
 ENDIF
+
+IF ( ALLOCATED ( casdiags %  SurfaceSnowSSA )) THEN
+   DEALLOCATE ( casdiags % SurfaceSnowSSA )
+END IF
+
+IF ( ALLOCATED ( casdiags %  SurfaceSnowRho )) THEN
+   DEALLOCATE ( casdiags % SurfaceSnowRho )
+END IF
 
 IF ( ALLOCATED ( casdiags %  SurfaceGraupR )) THEN
    DEALLOCATE ( casdiags % SurfaceGraupR )

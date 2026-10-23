@@ -411,6 +411,7 @@ contains
        theta, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13,       &
        a14, a15, a16, a17, a18, a19, a20,                                   &
        exner, pressure, rho, w, tke, dz,                                    &
+       l_surface_props,                                                     &
        cfliq, cfice, cfsnow, cfrain, cfgr,    &
        dqv, dq1, dq2, dq3, dq4, dq5, dq6, dq7, dq8, dq9, dq10, dq11, dq12,  &
        dq13, dth, da1, da2, da3, da4, da5, da6, da7, da8, da9, da10, da11,  &
@@ -442,6 +443,7 @@ contains
                 cfsnow(kl:ku, il:iu, jl:ju ), cfgr(kl:ku, il:iu, jl:ju )
 
 
+    logical, intent(in)     :: l_surface_props
 
     real(wp), intent(in) :: qv( kl:ku, il:iu, jl:ju )
     real(wp), intent(in) :: theta( kl:ku, il:iu, jl:ju )
@@ -495,6 +497,8 @@ contains
     real(wp) :: precip_i(nxy_inner)
     real(wp) :: precip_s(nxy_inner)
     real(wp) :: precip_g(nxy_inner)
+    real(wp) :: surfacerho_f(nxy_inner)
+    real(wp) :: surfacessa_f(nxy_inner)
 
     real(wp) :: precip_l1d(nz, nxy_inner)
     real(wp) :: precip_r1d(nz, nxy_inner)
@@ -517,6 +521,7 @@ contains
     !--------------------------------------------------------------------------
     ! End of header, no more declarations beyond here
     !--------------------------------------------------------------------------
+
     IF (lhook) CALL dr_hook(ModuleName//':'//RoutineName,zhook_in,zhook_handle)
 
     if (casim_parent == parent_monc) casim_time = casim_time + dt
@@ -557,6 +562,9 @@ contains
           precip_i(ixy_inner) = 0.0
           precip_s(ixy_inner) = 0.0
           precip_g(ixy_inner) = 0.0
+
+          surfacerho_f(ixy_inner) = 0.0
+          surfacessa_f(ixy_inner) = 0.0
 
           precip_l1d(:, ixy_inner)  = 0.0
           precip_r1d(:, ixy_inner)  = 0.0
@@ -673,6 +681,7 @@ contains
             !, precip(i,j)
             , precip &
             , precip_l, precip_r, precip_i, precip_s, precip_g       &
+            , l_surface_props, surfacerho_f, surfacessa_f                         &
             , precip_r1d, precip_s1d, precip_so1d, precip_g1d                     &
             , aerophys, aerochem, aeroact                                         &
             , dustphys, dustchem, dustact                                         &
@@ -753,6 +762,9 @@ contains
               if ( casdiags % l_surface_rain ) casdiags % SurfaceRainR(i,j)  = precip_r(ixy_inner)
               if ( casdiags % l_surface_snow ) casdiags % SurfaceSnowR(i,j)  = 0.0
               if ( casdiags % l_surface_graup) casdiags % SurfaceGraupR(i,j) = 0.0
+
+              if ( casdiags % l_surface_snowrho) casdiags % SurfaceSnowRho(i,j) = 0.0
+              if ( casdiags % l_surface_snowssa) casdiags % SurfaceSnowSSA(i,j) = 0.0
               if ( casdiags % l_rainfall_3d ) casdiags % rainfall_3d(i,j,k_start:k_end)  = precip_r1d(:,ixy_inner)
               if ( casdiags % l_snowfall_3d ) casdiags % snowfall_3d(i,j,k_start:k_end)  = 0.0
               if ( casdiags % l_snowonly_3d ) casdiags % snowonly_3d(i,j,k_start:k_end)  = 0.0
@@ -762,6 +774,10 @@ contains
               if ( casdiags % l_surface_rain ) casdiags % SurfaceRainR(i,j)  = precip_r(ixy_inner)
               if ( casdiags % l_surface_snow ) casdiags % SurfaceSnowR(i,j)  = precip_s(ixy_inner)
               if ( casdiags % l_surface_graup) casdiags % SurfaceGraupR(i,j) = precip_g(ixy_inner)
+
+              if ( casdiags % l_surface_snowrho) casdiags % SurfaceSnowRho(i,j) = surfacerho_f(ixy_inner)
+              if ( casdiags % l_surface_snowssa) casdiags % SurfaceSnowSSA(i,j) = surfacessa_f(ixy_inner)
+
               if ( casdiags % l_rainfall_3d ) casdiags % rainfall_3d(i,j,k_start:k_end)  = precip_r1d(:,ixy_inner)
               if ( casdiags % l_snowfall_3d ) casdiags % snowfall_3d(i,j,k_start:k_end)  = precip_s1d(:,ixy_inner)
               if ( casdiags % l_snowonly_3d ) casdiags % snowonly_3d(i,j,k_start:k_end)  = precip_so1d(:,ixy_inner)
@@ -860,6 +876,7 @@ contains
        !ix, jy,
        , qfields, cffields, dqfields, tend &
        , procs, precip, precip_l, precip_r, precip_i, precip_s, precip_g      &
+       , l_surface_props, surfacerho_f, surfacessa_f                          &
        , precip_r1d, precip_s1d, precip_so1d, precip_g1d                      &
        , aerophys, aerochem, aeroact                                          &
        , dustphys, dustchem, dustact                                          &
@@ -894,6 +911,10 @@ contains
     real(wp), INTENT(INOUT) :: precip_s(:)
     real(wp), intent(inout) :: precip_g(:)
 
+    logical,  INTENT(in)    :: l_surface_props
+    real(wp), INTENT(inout) :: surfacerho_f(:)
+    real(wp), INTENT(inout) :: surfacessa_f(:)
+
     real(wp), INTENT(INOUT) :: precip_r1d(:,:)
     real(wp), INTENT(INOUT) :: precip_s1d(:,:)
     real(wp), INTENT(INOUT) :: precip_so1d(:,:)
@@ -915,6 +936,11 @@ contains
     real(wp), intent(inout) :: aerofields(:,:,:), daerofields(:,:,:), aerosol_tend(:,:,:)
     type(process_rate), intent(inout), optional :: aerosol_procs(:,:,:)
 
+    real(wp) :: surfacevflx_i(nxy_inner), surfacevflx_s(nxy_inner),            &
+                surfacevflx_g(nxy_inner), surfacevflx_null
+    real(wp) :: surfacessa_i(nxy_inner), surfacessa_s(nxy_inner),              &
+                surfacessa_g(nxy_inner), surfacessa_null
+
     real(wp) :: step_length
 
     real(wp) :: sed_length, sed_length_cloud, sed_length_rain, sed_length_ice, sed_length_snow &
@@ -935,6 +961,22 @@ contains
     real(wp) :: precip_i_w(nxy_inner) ! Ice precip
     real(wp) :: precip_g_w(nxy_inner) ! Graupel precip
     real(wp) :: precip_s_w(nxy_inner) ! Snow precip
+
+    ! Local working rates for surface properties
+    real(wp) :: vflx_i_w(nxy_inner) ! Volume flux of ice
+    real(wp) :: vflx_s_w(nxy_inner) ! Volume flux of snow
+    real(wp) :: vflx_g_w(nxy_inner) ! Volume flux of graupel
+    real(wp) :: ssa_i_w(nxy_inner) ! SSA flux of ice
+    real(wp) :: ssa_s_w(nxy_inner) ! SSA flux of snow
+    real(wp) :: ssa_g_w(nxy_inner) ! SSA flux of graupel
+        
+    ! Final fluxes for surface properties
+    real(wp) :: vflx_i(nxy_inner) ! Volume flux of ice
+    real(wp) :: vflx_s(nxy_inner) ! Volume flux of snow
+    real(wp) :: vflx_g(nxy_inner) ! Volume flux of graupel
+    real(wp) :: ssa_i(nxy_inner) ! SSA flux of ice
+    real(wp) :: ssa_s(nxy_inner) ! SSA flux of snow
+    real(wp) :: ssa_g(nxy_inner) ! SSA flux of graupel
 
     !AH - note that nz is derived in mphys_init and accounts for the lowest level
     !     not equal to 1
@@ -1713,6 +1755,22 @@ contains
          precip_g_w(ixy_inner) = 0.0
          precip_s_w(ixy_inner) = 0.0
 
+         if (l_surface_props) then
+           vflx_i_w(ixy_inner) = 0.0
+           vflx_s_w(ixy_inner) = 0.0
+           vflx_g_w(ixy_inner) = 0.0
+           vflx_i(ixy_inner)   = 0.0
+           vflx_s(ixy_inner)   = 0.0
+           vflx_g(ixy_inner)   = 0.0
+           ssa_i_w(ixy_inner)  = 0.0
+           ssa_s_w(ixy_inner)  = 0.0
+           ssa_g_w(ixy_inner)  = 0.0
+           ssa_i(ixy_inner)    = 0.0
+           ssa_s(ixy_inner)    = 0.0
+           ssa_g(ixy_inner)    = 0.0
+         end if
+
+
          do k = 1, nz
             precip_l_w1d(k, ixy_inner) = 0.0
             precip_r_w1d(k, ixy_inner) = 0.0
@@ -1778,13 +1836,17 @@ contains
                         call sedr(ixy_inner, qfields(:,:,ixy_inner), aeroact,  &
                              dustliq, cloud_params, procs(:,:,ixy_inner),      &
                              aerosol_procs(:,:,ixy_inner),                     &
-                             precip1d(:,ixy_inner), l_process)
+                             precip1d(:,ixy_inner),                            &
+                             .FALSE., surfacevflx_null, surfacessa_null,       &
+                             l_process)
                      else
                         call sedr_1M_2M(ixy_inner, sed_length,                 &
                               qfields(:,:,ixy_inner), aeroact, dustliq,        &
                               cloud_params, procs(:,:,ixy_inner),              &
                               aerosol_procs(:,:,ixy_inner),                    &
-                              precip1d(:,ixy_inner), l_process)
+                              precip1d(:,ixy_inner),                           &
+                              .FALSE., surfacevflx_null, surfacessa_null,      &
+                              l_process)
                      endif
 
                      precip_l_w(ixy_inner) = precip_l_w(ixy_inner) +           &
@@ -1806,13 +1868,17 @@ contains
                         call sedr(ixy_inner, qfields(:,:,ixy_inner), aeroact,  &
                              dustliq, rain_params, procs(:,:,ixy_inner),       &
                              aerosol_procs(:,:,ixy_inner),                     &
-                             precip1d(:,ixy_inner), l_process)
+                             precip1d(:,ixy_inner),                            &
+                             .FALSE., surfacevflx_null, surfacessa_null,       &
+                             l_process)
                      else
                         call sedr_1M_2M(ixy_inner, sed_length,                 &
                              qfields(:,:,ixy_inner), aeroact, dustliq,         &
                              rain_params, procs(:,:,ixy_inner),                &
                              aerosol_procs(:,:,ixy_inner),                     &
-                             precip1d(:,ixy_inner), l_process)
+                             precip1d(:,ixy_inner),                            &
+                             .FALSE., surfacevflx_null, surfacessa_null,       &
+                             l_process)
                      endif
 
                      precip_r_w(ixy_inner) = precip_r_w(ixy_inner) +           &
@@ -1837,16 +1903,28 @@ contains
                                 aeroice, dustact, ice_params,                  &
                                 procs(:,:,ixy_inner),                          &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_i(ixy_inner),     &
+                                surfacessa_i(ixy_inner),                       &
+                                l_process)
                         else
                            call sedr_1M_2M(ixy_inner, sed_length,              &
                                 qfields(:,:,ixy_inner), aeroice, dustact,      &
                                 ice_params, procs(:,:,ixy_inner),              &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_i(ixy_inner),     &
+                                surfacessa_i(ixy_inner),                       &
+                                l_process)
                         endif
                         precip_i_w(ixy_inner) = precip_i_w(ixy_inner) +        &
                                                      precip1d(level1,ixy_inner)
+                        if (l_surface_props) then
+                           vflx_i_w(ixy_inner) = vflx_i_w(ixy_inner) +         &
+                                                 surfacevflx_i(ixy_inner)
+                           ssa_i_w(ixy_inner) = ssa_i_w(ixy_inner) +           &
+                              surfacessa_i(ixy_inner) * precip_i_w(ixy_inner)
+                        end if
 
                         do k = 1, nz
                            precip_i_w1d(k,ixy_inner) =                         &
@@ -1865,16 +1943,29 @@ contains
                                 aeroice, dustact, snow_params,                 &
                                 procs(:,:,ixy_inner),                          &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_s(ixy_inner),     &
+                                surfacessa_s(ixy_inner),                       &
+                                l_process)
                         else
                            call sedr_1M_2M(ixy_inner, sed_length,              &
                                 qfields(:,:,ixy_inner), aeroice, dustact,      &
                                 snow_params, procs(:,:,ixy_inner),             &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_s(ixy_inner),     &
+                                surfacessa_s(ixy_inner),                       &
+                                l_process)
                         endif
                         precip_s_w(ixy_inner) = precip_s_w(ixy_inner) +        &
                                                      precip1d(level1,ixy_inner)
+
+                        if (l_surface_props) then
+                           vflx_s_w(ixy_inner) = vflx_s_w(ixy_inner) +         &
+                                                 surfacevflx_s(ixy_inner)
+                           ssa_s_w(ixy_inner) = ssa_s_w(ixy_inner) +           &
+                              surfacessa_s(ixy_inner) * precip_s_w(ixy_inner)
+                        end if
 
                         do k = 1, nz
                            precip_s_w1d(k,ixy_inner) =                         &
@@ -1893,16 +1984,29 @@ contains
                                 aeroice, dustact, graupel_params,              &
                                 procs(:,:,ixy_inner),                          &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_g(ixy_inner),     &
+                                surfacessa_g(ixy_inner),                       &
+                                l_process)
                         else
                            call sedr_1M_2M(ixy_inner, sed_length,              &
                                 qfields(:,:,ixy_inner), aeroice, dustact,      &
                                 graupel_params, procs(:,:,ixy_inner),          &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_g(ixy_inner),     &
+                                surfacessa_g(ixy_inner),                       &
+                                l_process)
                         endif
                         precip_g_w(ixy_inner) = precip_g_w(ixy_inner) +        &
                                                      precip1d(level1,ixy_inner)
+
+                        if (l_surface_props) then
+                           vflx_g_w(ixy_inner) = vflx_g_w(ixy_inner) +         &
+                                                 surfacevflx_g(ixy_inner)
+                           ssa_g_w(ixy_inner) = ssa_g_w(ixy_inner) +           &
+                               surfacessa_g(ixy_inner) * precip_g_w(ixy_inner)
+                        end if
 
                         do k = 1, nz
                            precip_g_w1d(k,ixy_inner) =                         &
@@ -1986,13 +2090,17 @@ contains
                         call sedr(ixy_inner, qfields(:,:,ixy_inner), aeroact,  &
                              dustliq, cloud_params, procs(:,:,ixy_inner),      &
                              aerosol_procs(:,:,ixy_inner),                     &
-                             precip1d(:,ixy_inner), l_process)
+                             precip1d(:,ixy_inner),                            &
+                             .FALSE., surfacevflx_null, surfacessa_null,       &
+                             l_process)
                      else
                         call sedr_1M_2M(ixy_inner, sed_length_cloud,           &
                              qfields(:,:,ixy_inner), aeroact, dustliq,         &
                              cloud_params, procs(:,:,ixy_inner),               &
                              aerosol_procs(:,:,ixy_inner),                     &
-                             precip1d(:,ixy_inner), l_process)
+                             precip1d(:,ixy_inner),                            &
+                             .FALSE., surfacevflx_null, surfacessa_null,       &
+                             l_process)
                      endif
 
                      precip_l_w(ixy_inner) = precip_l_w(ixy_inner) +           &
@@ -2053,13 +2161,17 @@ contains
                         call sedr(ixy_inner, qfields(:,:,ixy_inner), aeroact,  &
                              dustliq, rain_params, procs(:,:,ixy_inner),       &
                              aerosol_procs(:,:,ixy_inner),                     &
-                             precip1d(:,ixy_inner), l_process)
+                             precip1d(:,ixy_inner),                            &
+                             .FALSE., surfacevflx_null, surfacessa_null,       &
+                             l_process)
                      else
                         call sedr_1M_2M(ixy_inner, sed_length_rain,            &
                              qfields(:,:,ixy_inner), aeroact, dustliq,         &
                              rain_params, procs(:,:,ixy_inner),                &
                              aerosol_procs(:,:,ixy_inner),                     &
-                             precip1d(:,ixy_inner), l_process)
+                             precip1d(:,ixy_inner),                            &
+                             .FALSE., surfacevflx_null, surfacessa_null,       &
+                             l_process)
                      endif
 
                      precip_r_w(ixy_inner) = precip_r_w(ixy_inner) +           &
@@ -2123,17 +2235,30 @@ contains
                                 aeroice, dustact, ice_params,                  &
                                 procs(:,:,ixy_inner),                          &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_i(ixy_inner),     &
+                                surfacessa_i(ixy_inner),                       &
+                                l_process)
                         else
                            call sedr_1M_2M(ixy_inner, sed_length_ice,          &
                                 qfields(:,:,ixy_inner), aeroice, dustact,      &
                                 ice_params, procs(:,:,ixy_inner),              &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_i(ixy_inner),     &
+                                surfacessa_i(ixy_inner),                       &
+                                l_process)
                         end if
 
                         precip_i_w(ixy_inner) = precip_i_w(ixy_inner) +        &
                                                      precip1d(level1,ixy_inner)
+
+                        if (l_surface_props) then
+                           vflx_i_w(ixy_inner) = vflx_i_w(ixy_inner) +         &
+                                                 surfacevflx_i(ixy_inner)
+                           ssa_i_w(ixy_inner) = ssa_i_w(ixy_inner) +           &
+                              surfacessa_i(ixy_inner) * precip_i_w(ixy_inner)
+                        end if
 
                         do k = 1, nz
                            precip_i_w1d(k,ixy_inner) =                         &
@@ -2191,17 +2316,30 @@ contains
                                 aeroice, dustact, snow_params,                 &
                                 procs(:,:,ixy_inner),                          &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_s(ixy_inner),     &
+                                surfacessa_s(ixy_inner),                       &
+                                l_process)
                         else
                            call sedr_1M_2M(ixy_inner, sed_length_snow,         &
                                 qfields(:,:,ixy_inner), aeroice, dustact,      &
                                 snow_params, procs(:,:,ixy_inner),             &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_s(ixy_inner),     &
+                                surfacessa_s(ixy_inner),                       &
+                                l_process)
                         end if
 
                         precip_s_w(ixy_inner) = precip_s_w(ixy_inner) +        &
                                                      precip1d(level1,ixy_inner)
+
+                        if (l_surface_props) then
+                           vflx_s_w(ixy_inner) = vflx_s_w(ixy_inner) +         &
+                                                 surfacevflx_s(ixy_inner)
+                           ssa_s_w(ixy_inner) = ssa_s_w(ixy_inner) +           &
+                              surfacessa_s(ixy_inner) * precip_s_w(ixy_inner)
+                        end if
 
                         do k = 1, nz
                            precip_s_w1d(k,ixy_inner) =                         &
@@ -2258,17 +2396,30 @@ contains
                                 aeroice, dustact, graupel_params,              &
                                 procs(:,:,ixy_inner),                          &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_g(ixy_inner),     &
+                                surfacessa_g(ixy_inner),                       &
+                                l_process)
                         else
                            call sedr_1M_2M(ixy_inner, sed_length_graupel,      &
                                 qfields(:,:,ixy_inner), aeroice, dustact,      &
                                 graupel_params, procs(:,:,ixy_inner),          &
                                 aerosol_procs(:,:,ixy_inner),                  &
-                                precip1d(:,ixy_inner), l_process)
+                                precip1d(:,ixy_inner),                         &
+                                l_surface_props, surfacevflx_g(ixy_inner),     &
+                                surfacessa_g(ixy_inner),                       &
+                                l_process)
                         end if
 
                         precip_g_w(ixy_inner) = precip_g_w(ixy_inner) +        &
                                                      precip1d(level1,ixy_inner)
+
+                        if (l_surface_props) then
+                           vflx_g_w(ixy_inner) = vflx_g_w(ixy_inner) +         &
+                                                 surfacevflx_g(ixy_inner)
+                           ssa_g_w(ixy_inner) = ssa_g_w(ixy_inner) +           &
+                              surfacessa_g(ixy_inner) * precip_g_w(ixy_inner)
+                        end if
 
                         do k = 1, nz
                            precip_g_w1d(k,ixy_inner) =                         &
@@ -2319,6 +2470,15 @@ contains
          ! For the UM, graupel rate is just itself
          precip_g(ixy_inner) = precip_g(ixy_inner) + precip_g_w(ixy_inner)
 
+         if (l_surface_props) then
+            vflx_i(ixy_inner) = vflx_i(ixy_inner) + vflx_i_w(ixy_inner)
+            vflx_s(ixy_inner) = vflx_s(ixy_inner) + vflx_s_w(ixy_inner)
+            vflx_g(ixy_inner) = vflx_g(ixy_inner) + vflx_g_w(ixy_inner)
+            ssa_i(ixy_inner) = ssa_i(ixy_inner) + ssa_i_w(ixy_inner)
+            ssa_s(ixy_inner) = ssa_s(ixy_inner) + ssa_s_w(ixy_inner)
+            ssa_g(ixy_inner) = ssa_g(ixy_inner) + ssa_g_w(ixy_inner)
+         end if
+
          do k = 1, nz
             precip_r1d(k,ixy_inner)  = precip_r1d(k,ixy_inner)  +              &
                           precip_l_w1d(k,ixy_inner) + precip_r_w1d(k,ixy_inner)
@@ -2333,7 +2493,7 @@ contains
 
          if (nsubsteps>1)then
             !-------------------------------
-            ! Reset process rates if they
+            ! Reset process rates if the
             ! are to be re-used
             !-------------------------------
             !call zero_procs_exp(procs)
@@ -2373,9 +2533,39 @@ contains
        precip_s(ixy_inner) = precip_s(ixy_inner) * inv_allsubs_snow
        precip_g(ixy_inner) = precip_g(ixy_inner) * inv_allsubs_graupel
 
+       if (l_surface_props) then
+          vflx_i(ixy_inner) = vflx_i(ixy_inner) * inv_allsubs_ice
+          vflx_s(ixy_inner) = vflx_s(ixy_inner) * inv_allsubs_snow
+          vflx_g(ixy_inner) = vflx_g(ixy_inner) * inv_allsubs_graupel
+          ssa_i(ixy_inner)  = ssa_i(ixy_inner) * inv_allsubs_ice
+          ssa_s(ixy_inner)  = ssa_s(ixy_inner) * inv_allsubs_snow
+          ssa_g(ixy_inner)  = ssa_g(ixy_inner) * inv_allsubs_graupel
+          if (precip_i(ixy_inner) + precip_s(ixy_inner) +                      &
+              precip_g(ixy_inner) > 1.0e-5) then
+             surfacerho_f(ixy_inner) = (precip_i(ixy_inner) +                  &
+                         precip_s(ixy_inner) + precip_g(ixy_inner)) /          &
+                            (vflx_i(ixy_inner) +                               &
+                         vflx_s(ixy_inner) + vflx_g(ixy_inner))
+             ! Start with very broad limits to trap unrealistic
+             ! bhaviour.
+             surfacerho_f(ixy_inner) = MAX(0.01,                               &
+                                       MIN(10000.0, surfacerho_f(ixy_inner)))
+             surfacessa_f(ixy_inner) = (ssa_i(ixy_inner) +                     &
+                                        ssa_s(ixy_inner) + ssa_g(ixy_inner)) / &
+                            (precip_i(ixy_inner) +                             &
+                             precip_s(ixy_inner) + precip_g(ixy_inner))
+             surfacessa_f(ixy_inner) = MAX(0.01,                               &
+                                       MIN(10000.0, surfacessa_f(ixy_inner)))
+          else
+             surfacerho_f(ixy_inner) = 100.0
+             surfacessa_f(ixy_inner) = 65.0
+          end if
+       end if
+
        ! UM precip rates are
        precip_r(ixy_inner) = precip_l(ixy_inner) + precip_r(ixy_inner)
-       precip_s(ixy_inner) = precip_i(ixy_inner) + precip_s(ixy_inner) + precip_g(ixy_inner)
+       precip_s(ixy_inner) = precip_i(ixy_inner) + precip_s(ixy_inner) +       &
+                             precip_g(ixy_inner)
 
        do k = 1, nz
           precip_r1d(k,ixy_inner)  = precip_r1d(k,ixy_inner)  * inv_allsubs
